@@ -14,6 +14,23 @@ services:
       - .:/app
     env_file:
       - .env
+    environment:
+      - DOCKER_MODE=true
+    restart: always
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: phantom_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-phantom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phantom}
+      POSTGRES_DB: ${POSTGRES_DB:-phantom_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     restart: always
 
   frontend:
@@ -26,3 +43,6 @@ services:
     depends_on:
       - backend
     restart: always
+
+volumes:
+  postgres_data:

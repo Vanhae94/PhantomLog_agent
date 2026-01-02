@@ -9,3 +9,6 @@ langsmith
 python-dotenv
 fastapi
 uvicorn
+sqlalchemy
+asyncpg
+greenlet

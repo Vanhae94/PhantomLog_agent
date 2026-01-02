@@ -11,7 +11,35 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from graph.workflow import create_game_graph
 from langgraph.types import Command
 
-app = FastAPI(title="Phantom Log API")
+from contextlib import asynccontextmanager
+from backend.database import engine, Base, AsyncSessionLocal
+from backend.crud import get_all_characters, create_character
+from characters import student, office_worker, artist, chef, teacher
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Create tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Seed initial data if empty
+    async with AsyncSessionLocal() as db:
+        characters = await get_all_characters(db)
+        if not characters:
+            print("Creating initial character data...")
+            character_modules = [student, office_worker, artist, chef, teacher]
+            for module in character_modules:
+                char_info = module.get_character_info()
+                # Remove keys not in model (like 'age') to prevent TypeError
+                char_info_clean = {k: v for k, v in char_info.items() if k != 'age'}
+                await create_character(db, char_info_clean)
+            print("Seeding complete.")
+            
+    yield
+    # Shutdown
+    await engine.dispose()
+
+app = FastAPI(title="Phantom Log API", lifespan=lifespan)
 
 # CORS Setup
 app.add_middleware(
@@ -62,17 +90,12 @@ def format_messages(messages):
 async def start_game(request: GameStartRequest):
     config = {"configurable": {"thread_id": request.thread_id}}
     
-    # Initialize or reset game
-    # Note: LangGraph checkpointer persistence depends on the implementation.
-    # For a fresh start, we might need a new thread_id or clear state if possible.
-    # Here we just invoke with empty input to ensure setup.
-    
     try:
         # Check if state exists
-        current_state = graph_app.get_state(config)
+        current_state = await graph_app.aget_state(config)
         if not current_state.next:
              # Initial start
-            graph_app.invoke({}, config)
+            await graph_app.ainvoke({}, config)
         
         return {"message": "Game session started", "thread_id": request.thread_id}
     except Exception as e:
@@ -81,7 +104,7 @@ async def start_game(request: GameStartRequest):
 @app.get("/api/game/state/{thread_id}")
 async def get_game_state(thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
-    current_state = graph_app.get_state(config)
+    current_state = await graph_app.aget_state(config)
     
     if not current_state.values:
         raise HTTPException(status_code=404, detail="Game session not found")
@@ -150,7 +173,7 @@ async def perform_action(request: UserActionRequest):
 
     try:
         # Resume graph execution
-        graph_app.invoke(Command(resume=resume_data), config)
+        await graph_app.ainvoke(Command(resume=resume_data), config)
         
         # Fetch updated state
         return await get_game_state(request.thread_id)

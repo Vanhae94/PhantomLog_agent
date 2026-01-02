@@ -15,21 +15,28 @@ import json
 load_dotenv()
 
 
-def setup_game_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def setup_game_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     게임 초기 세팅 노드
-    - 캐릭터 정보 로드
+    - DB에서 캐릭터 정보 로드
     - 무작위 범인 선정
     """
-    from characters import student, office_worker, artist, chef, teacher
+    from backend.database import AsyncSessionLocal
+    from backend.crud import get_all_characters
 
-    character_modules = [student, office_worker, artist, chef, teacher]
-
-    # 캐릭터 정보 수집
+    # DB에서 캐릭터 정보 수집
+    async with AsyncSessionLocal() as db:
+        db_characters = await get_all_characters(db)
+        
     characters = []
-    for module in character_modules:
-        char_info = module.get_character_info()
-        characters.append(char_info)
+    for char in db_characters:
+        characters.append({
+            "name": char.name,
+            # "age" removed as per request
+            "job": char.job,
+            "personality": char.personality,
+            "prompt": char.prompt
+        })
 
     # 무작위 범인 선정
     phantom = random.choice(characters)
